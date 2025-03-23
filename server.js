@@ -20,11 +20,11 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // 📌 Conexión a MySQL
 const db = mysql.createConnection({
-  host: '34.51.13.114',        // 🔹 Dirección IP pública de la instancia de Cloud SQL
-  user: 'root',                
-  password: 'integradora2025',   
-  database: 'checkmekit',      
-  port: 3306,                  
+  host: process.env.MYSQL_HOST,
+  user: process.env.MYSQL_USER,
+  password: process.env.MYSQL_PASSWORD,
+  database: process.env.MYSQL_DATABASE,
+  port: process.env.MYSQL_PORT || 3306,
 });
 
 db.connect((err) => {
