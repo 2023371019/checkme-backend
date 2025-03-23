@@ -13,9 +13,12 @@ RUN npm install
 # Copia el resto de la aplicación
 COPY . .
 
-# Expone el puerto usado por la app (Cloud Run usará $PORT)
+# Copia el archivo .env (necesario para variables como MONGO_URI)
+COPY .env .env
+
+# Define el puerto que usará la app dentro del contenedor
 ENV PORT=8080
 EXPOSE 8080
 
-# Ejecuta el servidor
+# Comando para ejecutar el servidor
 CMD ["node", "server.js"]
