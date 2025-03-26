@@ -1,31 +1,36 @@
 steps:
+  # Paso 1: Construcción de la imagen del contenedor
   - name: gcr.io/cloud-builders/docker
     args:
       - build
       - '-t'
-      - 'us-central1-docker.pkg.dev/$_AR_PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME'
-      - '.'  # Usamos la raíz del proyecto como contexto
+      - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME
+      - .
       - '-f'
-      - './Dockerfile'  # Usamos el Dockerfile que debe estar en la raíz
+      - ./Dockerfile
     id: Build
 
+  # Paso 2: Empujar la imagen del contenedor a Container Registry
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - 'us-central1-docker.pkg.dev/$_AR_PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME'
+      - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME
     id: Push
 
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+  # Paso 3: Desplegar el servicio en Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'  # Imagen completa de Google Cloud SDK
     args:
+      - gcloud
       - run
       - services
       - update
-      - '$_SERVICE_NAME'
+      - $_SERVICE_NAME
       - '--platform=managed'
-      - '--image=us-central1-docker.pkg.dev/$_AR_PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME'
+      - '--image=$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME'
       - '--region=$_DEPLOY_REGION'
       - '--quiet'
     id: Deploy
 
 options:
   logging: CLOUD_LOGGING_ONLY
+
