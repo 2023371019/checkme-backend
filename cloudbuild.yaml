@@ -1,0 +1,31 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$_AR_PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME'
+      - '.'  # Usamos la raíz del proyecto como contexto
+      - '-f'
+      - './Dockerfile'  # Usamos el Dockerfile que debe estar en la raíz
+    id: Build
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - 'us-central1-docker.pkg.dev/$_AR_PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME'
+    id: Push
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    args:
+      - run
+      - services
+      - update
+      - '$_SERVICE_NAME'
+      - '--platform=managed'
+      - '--image=us-central1-docker.pkg.dev/$_AR_PROJECT_ID/$_AR_REPOSITORY/$_SERVICE_NAME'
+      - '--region=$_DEPLOY_REGION'
+      - '--quiet'
+    id: Deploy
+
+options:
+  logging: CLOUD_LOGGING_ONLY
