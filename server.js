@@ -65,6 +65,67 @@ app.get("/api/datos", async (req, res) => {
   }
 });
 
+// 📌 Crear el servidor HTTP para usar con socket.io
+const server = http.createServer(app);
+const io = socketIo(server);  // Configuración de Socket.io
+
+// 📌 Configuración de Socket.io para la mensajería en tiempo real
+io.on("connection", (socket) => {
+  console.log("Un usuario se ha conectado al chat");
+
+  // Escuchar el evento de mensaje enviado por el paciente
+  socket.on("enviar-mensaje", async (data) => {
+    try {
+      // Solo los mensajes del paciente llegan al doctor
+      if (data.emisor === "paciente" && data.receptor === "doctor") {
+        // Guardar el mensaje en MongoDB
+        const nuevoMensaje = new Mensaje({
+          emisor: data.emisor,
+          receptor: data.receptor,
+          mensaje: data.mensaje,
+        });
+
+        await nuevoMensaje.save();
+
+        // Emitir el mensaje solo al doctor (no a todos los usuarios conectados)
+        io.emit("mensaje-recibido", nuevoMensaje);
+      }
+
+      // Lógica para cuando el doctor responde
+      if (data.emisor === "doctor" && data.receptor === "paciente") {
+        const nuevoMensaje = new Mensaje({
+          emisor: data.emisor,
+          receptor: data.receptor,
+          mensaje: data.mensaje,
+        });
+
+        await nuevoMensaje.save();
+
+        // Emitir el mensaje de vuelta al paciente
+        io.emit("mensaje-recibido", nuevoMensaje);
+      }
+    } catch (error) {
+      console.error("❌ Error al guardar el mensaje:", error);
+    }
+  });
+
+  // Escuchar cuando un cliente se desconecta
+  socket.on("disconnect", () => {
+    console.log("Un usuario se ha desconectado del chat");
+  });
+});
+//--------------------------API PARA CONSULTAR LOS PACIENTES PARA LAS GRAFICAS------------------------------//
+
+// API para obtener listado de pacientes claramente desde base relacional
+app.get('/api/pacientes', async (req, res) => {
+  try {
+    const [resultados] = await db.promise().query("SELECT id_usuario, nombre FROM checkme_usuarios");
+    res.json(resultados);
+  } catch (error) {
+    console.error("Error al obtener pacientes:", error);
+    res.status(500).json({ error: "Error del servidor al obtener pacientes." });
+  }
+});
 
 //--------------------------API PARA CONSULTAR LOS PACIENTES PARA LAS GRAFICAS------------------------------//
 
@@ -408,7 +469,7 @@ app.post("/api/empresa", (req, res) => {
 });
 
 
-//------------------------CONSULTAR SALDO----------------------------//
+//------------------------INSERTAR SALDO----------------------------//
 // 🔹 Nueva API para consultar saldo por ID de usuario
 app.get("/api/saldo/:id_usuario", async (req, res) => {
     const { id_usuario } = req.params;
@@ -432,28 +493,7 @@ app.get("/api/saldo/:id_usuario", async (req, res) => {
 
 
 
-//--------------------------------------COMPRA----------------------------------//
 
-
-// 🔹 **Nueva API para verificar stock y precio del producto**
-app.get("/api/stock/:id_producto", async (req, res) => {
-    const { id_producto } = req.params;
-    try {
-        const [producto] = await db.promise().query(
-            "SELECT stock, precio FROM checkme_producto WHERE id_producto = ?",
-            [id_producto]
-        );
-
-        if (producto.length === 0) {
-            return res.status(404).json({ success: false, message: "Producto no encontrado." });
-        }
-
-        res.json({ success: true, stock: producto[0].stock, precio: producto[0].precio });
-    } catch (error) {
-        console.error("❌ Error al obtener el stock:", error);
-        res.status(500).json({ success: false, message: "Error al obtener el stock." });
-    }
-});
 
 //---------------------------------------MANDAR ALERTAS CON TRIGGER------------------------------------//
 app.get("/api/alertas-stock", async (req, res) => {
@@ -724,30 +764,80 @@ const [productosPorUsuario] = await db.promise().query(`
 
 
 
+//--------------------------REPORTE USUARIOS CON SUBCONSULTAS -----------------------------------------//
+app.get("/api/reporte-usuarios", async (req, res) => {
+  const query = `
+    SELECT 
+      u.id_usuario,
+      u.nombre,
+      u.apellido,
+      u.correo,
+      u.genero,
+      u.edad,
+      -- Total de compras por usuario
+      (SELECT COUNT(*) 
+       FROM checkme_ventas v 
+       WHERE v.id_usuario = u.id_usuario) AS total_compras,
 
-//--------------------------REPORTE USUARIOS-----------------------------------------//
-app.get("/api/reporte-usuarios", (req, res) => {
+      -- Última compra realizada
+      (SELECT MAX(v.fecha) 
+       FROM checkme_ventas v 
+       WHERE v.id_usuario = u.id_usuario) AS ultima_compra,
 
-                           //----------VISTA-----------//
-  const query = `SELECT * FROM VistaUsuarios ORDER BY id_usuario ASC;`;
+      -- Total gastado por el usuario
+      (SELECT COALESCE(SUM(v.total), 0) 
+       FROM checkme_ventas v 
+       WHERE v.id_usuario = u.id_usuario) AS total_gastado
+       
+    FROM checkme_usuarios u
+    ORDER BY u.id_usuario ASC;
+  `;
 
-  db.query(query, (err, results) => {
-    if (err) {
-      console.error("❌ Error en MySQL:", err);
-      return res.status(500).json({ error: "Error en MySQL", details: err.message });
-    }
+  try {
+    const [results] = await db.promise().query(query);
 
-    // Verificar si hay usuarios registrados
     if (!results || results.length === 0) {
       return res.json({ usuarios: [], totalUsuarios: 0 });
     }
 
     res.json({ usuarios: results, totalUsuarios: results.length });
-  });
+
+  } catch (err) {
+    console.error("❌ Error en MySQL:", err);
+    res.status(500).json({ error: "Error en MySQL", details: err.message });
+  }
 });
 
 
 
+
+
+
+
+
+
+//--------------------------------------COMPRA----------------------------------//
+
+
+// 🔹 **Nueva API para verificar stock y precio del producto**
+app.get("/api/stock/:id_producto", async (req, res) => {
+  const { id_producto } = req.params;
+  try {
+      const [producto] = await db.promise().query(
+          "SELECT stock, precio FROM checkme_producto WHERE id_producto = ?",
+          [id_producto]
+      );
+
+      if (producto.length === 0) {
+          return res.status(404).json({ success: false, message: "Producto no encontrado." });
+      }
+
+      res.json({ success: true, stock: producto[0].stock, precio: producto[0].precio });
+  } catch (error) {
+      console.error("❌ Error al obtener el stock:", error);
+      res.status(500).json({ success: false, message: "Error al obtener el stock." });
+  }
+});
 
 
 // Iniciar el servidor
