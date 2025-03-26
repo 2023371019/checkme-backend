@@ -11,7 +11,7 @@ const socketIo = require("socket.io");  // Importar socket.io
 const crypto = require("crypto");
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
@@ -508,38 +508,40 @@ app.get("/api/alertas-stock", async (req, res) => {
 
 
 //------------------------------TRANSACCIÓN CON STORED PROCEDURE-----------------------------------------------//
-
 app.post("/api/compra", async (req, res) => {
   const { id_usuario, id_producto, cantidad } = req.body;
 
   if (!id_usuario || !id_producto || !cantidad || cantidad <= 0) {
-      return res.status(400).json({ success: false, message: "Todos los campos son obligatorios y la cantidad debe ser mayor a 0." });
+    return res.status(400).json({ success: false, message: "Campos inválidos" });
   }
 
   try {
-      console.log(`🛒 Iniciando compra: Usuario ${id_usuario}, Producto ${id_producto}, Cantidad ${cantidad}`);
+    const [rows] = await db.promise().query(
+      "CALL realizar_compra(?, ?, ?)", 
+      [id_usuario, id_producto, cantidad]
+    );
 
-      // Llamada al procedimiento store procedure
-      const [result] = await db.promise().query(
-          "CALL RealizarCompra(?, ?, ?)", 
-          [id_usuario, id_producto, cantidad]
-      );
+    // El mensaje devuelto está en rows[0][0].resultado
+    const resultado = rows[0]?.[0]?.resultado;
 
-      res.json({ success: true, message: "Compra realizada con éxito." });
+    if (resultado) {
+      const exito = resultado.includes("éxito") || resultado.includes("éxito") || resultado.includes("realizada");
+      return res.status(200).json({ 
+        success: exito, 
+        message: resultado 
+      });
+    } else {
+      return res.status(500).json({ success: false, message: "Error al interpretar el resultado." });
+    }
 
   } catch (error) {
-      console.error("⛔ ERROR DETECTADO EN LA TRANSACCIÓN:", error);
-
-      let errorMessage = "Error en la transacción.";
-      if (error.sqlMessage) {
-          errorMessage = error.sqlMessage; // Captura el mensaje de error de MySQL
-      }
-
-      res.status(500).json({ success: false, message: errorMessage });
+    console.error("Error en la transacción:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.sqlMessage || "Error interno en la transacción." 
+    });
   }
 });
-
-
 
 
 
@@ -774,22 +776,26 @@ app.get("/api/reporte-usuarios", async (req, res) => {
       u.correo,
       u.genero,
       u.edad,
-      -- Total de compras por usuario
-      (SELECT COUNT(*) 
-       FROM checkme_ventas v 
-       WHERE v.id_usuario = u.id_usuario) AS total_compras,
 
-      -- Última compra realizada
-      (SELECT MAX(v.fecha) 
-       FROM checkme_ventas v 
-       WHERE v.id_usuario = u.id_usuario) AS ultima_compra,
+      -- Total de registros clínicos
+      (
+        SELECT COUNT(*) 
+        FROM checkme_historial_clinico hc 
+        WHERE hc.id_paciente = u.id_usuario
+      ) AS total_registros_clinicos,
 
-      -- Total gastado por el usuario
-      (SELECT COALESCE(SUM(v.total), 0) 
-       FROM checkme_ventas v 
-       WHERE v.id_usuario = u.id_usuario) AS total_gastado
-       
+      -- Total de compras
+      (
+        SELECT COUNT(*) 
+        FROM checkme_ventas v 
+        WHERE v.id_usuario = u.id_usuario
+      ) AS total_compras,
+
+      -- Saldo de empresa (null si no tiene cuenta)
+      e.saldo AS saldo_empresa
+
     FROM checkme_usuarios u
+    LEFT JOIN checkme_empresa e ON u.id_usuario = e.id_usuario
     ORDER BY u.id_usuario ASC;
   `;
 
@@ -807,6 +813,8 @@ app.get("/api/reporte-usuarios", async (req, res) => {
     res.status(500).json({ error: "Error en MySQL", details: err.message });
   }
 });
+
+
 
 
 
