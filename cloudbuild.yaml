@@ -18,7 +18,7 @@ steps:
     id: Push
 
   # Paso 3: Desplegar el servicio en Cloud Run
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'  # Imagen completa de Google Cloud SDK
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     args:
       - gcloud
       - run
@@ -33,4 +33,3 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-
