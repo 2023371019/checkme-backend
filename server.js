@@ -65,55 +65,7 @@ app.get("/api/datos", async (req, res) => {
   }
 });
 
-// 📌 Crear el servidor HTTP para usar con socket.io
-const server = http.createServer(app);
-const io = socketIo(server);  // Configuración de Socket.io
 
-// 📌 Configuración de Socket.io para la mensajería en tiempo real
-io.on("connection", (socket) => {
-  console.log("Un usuario se ha conectado al chat");
-
-  // Escuchar el evento de mensaje enviado por el paciente
-  socket.on("enviar-mensaje", async (data) => {
-    try {
-      // Solo los mensajes del paciente llegan al doctor
-      if (data.emisor === "paciente" && data.receptor === "doctor") {
-        // Guardar el mensaje en MongoDB
-        const nuevoMensaje = new Mensaje({
-          emisor: data.emisor,
-          receptor: data.receptor,
-          mensaje: data.mensaje,
-        });
-
-        await nuevoMensaje.save();
-
-        // Emitir el mensaje solo al doctor (no a todos los usuarios conectados)
-        io.emit("mensaje-recibido", nuevoMensaje);
-      }
-
-      // Lógica para cuando el doctor responde
-      if (data.emisor === "doctor" && data.receptor === "paciente") {
-        const nuevoMensaje = new Mensaje({
-          emisor: data.emisor,
-          receptor: data.receptor,
-          mensaje: data.mensaje,
-        });
-
-        await nuevoMensaje.save();
-
-        // Emitir el mensaje de vuelta al paciente
-        io.emit("mensaje-recibido", nuevoMensaje);
-      }
-    } catch (error) {
-      console.error("❌ Error al guardar el mensaje:", error);
-    }
-  });
-
-  // Escuchar cuando un cliente se desconecta
-  socket.on("disconnect", () => {
-    console.log("Un usuario se ha desconectado del chat");
-  });
-});
 //--------------------------API PARA CONSULTAR LOS PACIENTES PARA LAS GRAFICAS------------------------------//
 
 // API para obtener listado de pacientes claramente desde base relacional
@@ -126,10 +78,6 @@ app.get('/api/pacientes', async (req, res) => {
     res.status(500).json({ error: "Error del servidor al obtener pacientes." });
   }
 });
-
-
-
-
 
 
 
